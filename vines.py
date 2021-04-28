@@ -26,17 +26,35 @@ class Vine:
         [0.0, 1.5, 1.5, 0.6, 0.5],
     ])
 
-    def __init__(self, start_pos: tuple[float, float], length: float, thickness: float, rotate_degrees=0.0):
+    invert = np.array([
+        [0, -1],
+        [1, 0],
+    ])
+
+    def __init__(self, start_pos: tuple[float, float], length: float, thickness: float, rotate_degrees=0.0, flip=False):
         rotate_radians = rotate_degrees / 180 * np.pi
         rotation_matrix = np.array([
             [np.cos(rotate_radians), -np.sin(rotate_radians)],
             [np.sin(rotate_radians), np.cos(rotate_radians)],
         ])
         rotated = Vine.shape.T @ rotation_matrix
+        self.flipped = flip
+        if flip:
+            rotated[:, 0] *= -1
         nodes = rotated.T * length + np.array(start_pos)[:, None]
         self.thickness = thickness
         self.length = length
         self.curve = bezier.Curve(nodes, degree=len(nodes[0]) - 1)
+
+    def get_tangent_at(self, at: float):
+        return normalize(self.curve.evaluate_hodograph(at), axis=0)
+
+    def get_angle_at(self, at: float):
+        x, y = self.get_normal_at(at).T[0]
+        return np.arctan2(y, x) + np.pi
+
+    def get_normal_at(self, at: float):
+        return Vine.invert @ self.get_tangent_at(at)
 
     def draw_on_image(self, image: Image):
         draw = ImageDraw.Draw(image)
@@ -44,23 +62,33 @@ class Vine:
         thickness = thinning(dots)
         evaluated = self.curve.evaluate_multi(dots)
         for t, (d, (x, y)) in zip(thickness, zip(dots, zip(*evaluated))):
-            tangent_line = normalize(self.curve.evaluate_hodograph(d), axis=0) * 20 * t
-            delta_x, delta_y = tangent_line[1][0], -tangent_line[0][0]
+            tangent_line = self.get_normal_at(d) * self.thickness * t
+            delta_x, delta_y = tangent_line.T[0]
             draw.line((x - delta_x, y - delta_y, x + delta_x, y + delta_y), fill=255, width=5)
+
+    def get_child_vine(self, at: float):
+        start_pos = tuple(self.curve.evaluate(at).flatten())
+        angle = self.get_angle_at(at) * 180 / np.pi + np.random.uniform(-30, 30)
+        thinned = thinning(np.array([at]))
+        length = self.length * thinned[0]
+        thickness = thinned * self.thickness
+        return Vine(start_pos, length, thickness, rotate_degrees=angle, flip=not self.flipped)
 
 
 def main():
     img = Image.new("RGB", size, (0, 0, 0))
     vines = [
-        Vine(center, 300, 20),
-        Vine(center, 300, 20, rotate_degrees=180),
+        Vine(center, 100, 10),
+        Vine(center, 100, 10, rotate_degrees=180),
     ]
-    # for index in range(10):
-    #     chosen = np.random.choice(vines)
-    #     print(chosen)
+    for index in range(100):
+        # parent_vine = np.random.choice(vines)
+        # parent_vine = vines[-1]
+        parent_vine = vines[int(np.random.beta(1, 2) * len(vines))]
+        at = np.random.uniform()
+        vines.append(parent_vine.get_child_vine(at))
     for vine in vines:
         vine.draw_on_image(img)
-        at = np.random.rand(0, 1)
     img.save("vines.png")
 
 
