@@ -1,7 +1,8 @@
 import bezier
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from sklearn.preprocessing import normalize
+
+from color_gradient import ColorGradient
 
 
 class Vine:
@@ -15,13 +16,13 @@ class Vine:
             length: float,
             thickness: float,
             *,
-            color: tuple[int, int, int] = (255, 255, 255),
-            build_phase=1e9,
-            rotate_degrees=0.0,
-            flip=False,
-            depth=1,
-            max_child_vines=16,
-            grow_child_at=0.1,
+            color: ColorGradient,
+            build_phase: float = 1e9,
+            rotate_degrees: float = 0.0,
+            flip: bool = False,
+            depth: int = 1,
+            max_child_vines: int = 16,
+            grow_child_at: float = 0.1,
             axis_to_invert: int = 1,
             add_degrees_to_angle: float = 0,
     ):
@@ -90,9 +91,11 @@ class Vine:
     def get_angle_at(self, at: float) -> float:
         """ Returns angle in radians of the tangent for 0.0 <= at <= 1.0 """
         x, y = self.get_tangent_at(at).T[0]
-        return np.arctan2(y, x) + self.add_degrees_to_angle
+        return np.arctan2(y, x) + self.add_degrees_to_angle / 180.0 * np.pi
 
-    def draw_on_image(self, image: Image):
+    def draw_on_image(self, image: Image, debug_draw_tangent=False):
+        if self.child_vine:
+            self.child_vine.draw_on_image(image)
         draw = ImageDraw.Draw(image)
         phase = min(1.0, self.build_phase)
         dots = np.arange(0, phase, 1 / self.curve.length)
@@ -101,11 +104,9 @@ class Vine:
         for t, (d, (x, y)) in zip(thickness, zip(dots, zip(*evaluated))):
             tangent_line = self.get_normal_at(d) * self.thickness * t * np.clip(0, 1, self.build_phase)
             delta_x, delta_y = tangent_line.T[0]
-            draw.line((x - delta_x, y - delta_y, x + delta_x, y + delta_y), fill=self.color, width=5)
-        if self.child_vine:
-            self.child_vine.draw_on_image(image)
-        draw_tangent = False
-        if draw_tangent:
+            color = self.color.interpolate(self.build_phase - d + 1)
+            draw.line((x - delta_x, y - delta_y, x + delta_x, y + delta_y), fill=color, width=5)
+        if debug_draw_tangent:
             nx, ny = self.get_tangent_at(self.grow_child_at) * 40
             px, py = self.curve.evaluate(self.grow_child_at).T[0]
             draw.line((px, py, px + nx, py + ny), fill=(255, 255, 255), width=5)
@@ -119,7 +120,8 @@ def main():
     vine_count = 5
     vines = [
         Vine(center, 190, 15, rotate_degrees=i * (360 / vine_count),
-             color=(30, 255, 40), add_degrees_to_angle=np.pi / 7, axis_to_invert=1)
+             color=ColorGradient(("#51007D", 1), ("#FFD600", 1.2)),
+             add_degrees_to_angle=np.pi / 7, axis_to_invert=1, build_phase=1)
         for i in range(vine_count)
     ]
     for vine in vines:
