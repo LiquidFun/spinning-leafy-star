@@ -1,5 +1,3 @@
-from typing import Annotated, Literal
-
 import bezier
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -63,9 +61,13 @@ class Vine:
         thinned = self._thinning(np.array([at]))
         length = self.length * thinned[0]
         thickness = thinned * self.thickness
-        return Vine(start_pos, length, thickness, rotate_degrees=angle, flip=not self.flipped,
-                    depth=self.depth + 1, max_child_vines=self.max_child_vines, build_phase=self.build_phase - .2,
-                    color=self.color)
+        return Vine(
+            start_pos, length, thickness, color=self.color, build_phase=self.build_phase - .2,
+            rotate_degrees=angle, flip=not self.flipped,
+            depth=self.depth + 1, max_child_vines=self.max_child_vines,
+            grow_child_at=self.grow_child_at, axis_to_invert=self.axis_to_invert,
+            add_degrees_to_angle=self.add_degrees_to_angle
+        )
 
     @staticmethod
     def _sigmoid(x: float):
@@ -79,7 +81,8 @@ class Vine:
         return np.clip(0, 1, np.apply_along_axis(self._sigmoid, axis=0, arr=arr))
 
     def get_tangent_at(self, at: float) -> np.ndarray:
-        return normalize(self.curve.evaluate_hodograph(at), axis=0)
+        hodograph = self.curve.evaluate_hodograph(at)
+        return hodograph / np.linalg.norm(hodograph)
 
     def get_normal_at(self, at: float) -> np.ndarray:
         return np.array([[0, -1], [1, 0]]) @ self.get_tangent_at(at)
@@ -116,7 +119,7 @@ def main():
     vine_count = 5
     vines = [
         Vine(center, 190, 15, rotate_degrees=i * (360 / vine_count),
-             build_phase=.7, color=(255, 55, 0))
+             color=(30, 255, 40), add_degrees_to_angle=np.pi / 7, axis_to_invert=1)
         for i in range(vine_count)
     ]
     for vine in vines:
